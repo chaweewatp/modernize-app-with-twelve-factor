@@ -44,6 +44,24 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"message": "Hello from Go backend!"})
 	})
 
+	r.GET("/api/login", func(c *gin.Context) {
+		username := "myusername"
+		c.JSON(http.StatusOK, gin.H{
+			"message": "User logged in",
+			"user":    username,
+		})
+	})
+
+	// ดึง user จาก query parameter (เช่น /api/profile?user=myusername)
+	r.GET("/api/profile", func(c *gin.Context) {
+		user := c.Query("user") // รับค่าผ่าน query string
+		if user == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"user": user})
+	})
+
 	fmt.Println("Backend running on port", port)
 	r.Run(":" + port)
 }
