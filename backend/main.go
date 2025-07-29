@@ -1,0 +1,49 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+)
+
+var (
+	db    *gorm.DB
+	cache *redis.Client
+)
+
+func main() {
+	// Load config
+	port := "8080"
+	dsn := "host=localhost user=postgres password=postgres dbname=mydb port=5432 sslmode=disable"
+	redisAddr := "localhost:6379"
+
+	// Connect Postgres
+	var err error
+	db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		log.Fatal("DB connection failed:", err)
+	}
+
+	// Connect Redis
+	cache = redis.NewClient(&redis.Options{
+		Addr: redisAddr,
+	})
+	if err := cache.Ping(context.Background()).Err(); err != nil {
+		log.Fatal("Redis connection failed:", err)
+	}
+
+	// API routes
+	r := gin.Default()
+	r.GET("/api/hello", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"message": "Hello from Go backend!"})
+	})
+
+	fmt.Println("Backend running on port", port)
+	r.Run(":" + port)
+}
