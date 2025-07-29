@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/postgres"
@@ -18,10 +21,25 @@ var (
 )
 
 func main() {
-	// Load config
-	port := "8080"
-	dsn := "host=localhost user=postgres password=postgres dbname=mydb port=5432 sslmode=disable"
-	redisAddr := "localhost:6379"
+	// Load config from environment variables
+	port := os.Getenv("APP_PORT")
+	if port == "" {
+		port = "8080" // fallback default
+	}
+
+	dsn := os.Getenv("DATABASE_DSN")
+	if dsn == "" {
+		dsn = "host=localhost user=postgres password=postgres dbname=mydb port=5432 sslmode=disable"
+	}
+
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+
+	fmt.Println("Port:", port)
+	fmt.Println("DSN:", dsn)
+	fmt.Println("Redis Addr:", redisAddr)
 
 	// Connect Postgres
 	var err error
@@ -38,24 +56,24 @@ func main() {
 		log.Fatal("Redis connection failed:", err)
 	}
 
-	// API routes
 	r := gin.Default()
+	store := cookie.NewStore([]byte("secret"))
+	r.Use(sessions.Sessions("mysession", store))
 	r.GET("/api/hello", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "Hello from Go backend!"})
 	})
 
 	r.GET("/api/login", func(c *gin.Context) {
-		username := "myusername"
-		c.JSON(http.StatusOK, gin.H{
-			"message": "User logged in",
-			"user":    username,
-		})
+		session := sessions.Default(c)
+		session.Set("user", "myusername")
+		session.Save()
+		c.JSON(http.StatusOK, gin.H{"message": "User logged in"})
 	})
 
-	// ดึง user จาก query parameter (เช่น /api/profile?user=myusername)
 	r.GET("/api/profile", func(c *gin.Context) {
-		user := c.Query("user") // รับค่าผ่าน query string
-		if user == "" {
+		session := sessions.Default(c)
+		user := session.Get("user")
+		if user == nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}

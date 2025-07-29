@@ -78,6 +78,36 @@ http://localhost:3000
 
 ##### 6.Process ❌
 
+เรามี 2 api ที่ใช้ login และ getprofile อธิบายดังนี้
+
+- client api/login มา แล้ว backend ส่งค่า username กลับไป ให้ client save ไว้ที่ client
+- client ส่ง api/profile มาเพื่ิอขอรายละเอียด โดยแนบ username มาด้วย -> server return ข้อมูล กลับไป
+
+```go
+	r.GET("/api/login", func(c *gin.Context) {
+		username := "myusername"
+		c.JSON(http.StatusOK, gin.H{
+			"message": "User logged in",
+			"user":    username,
+		})
+	})
+
+	// ดึง user จาก query parameter (เช่น /api/profile?user=myusername)
+	r.GET("/api/profile", func(c *gin.Context) {
+		user := c.Query("user") // รับค่าผ่าน query string
+		if user == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"user": user})
+	})
+```
+
+โดยมีข้อเสียดังนี้
+
+- ต้องส่ง username ทุกครั้งใน URL → ไม่ปลอดภัยและไม่สะดวก
+- ผู้ใช้สามารถเปลี่ยนค่า user=myusername เองได้ → เสี่ยงต่อการ spoofing
+
 ##### 7.Port binding ✅
 
 มี code อยู่แล้วใน backend
@@ -126,16 +156,16 @@ http://localhost:3000
 
 ```
 export APP_PORT=9000
-export DATABASE_DSN="host=localhost user=postgres password=postgres dbname=mydb port=5432 sslmode=disable"
-export REDIS_ADDR="localhost:6380"
+export DATABASE_DSN="host=db user=postgres password=postgres dbname=mydb port=5432 sslmode=disable"
+export REDIS_ADDR="cache"
 ```
 
 ดูว่ามีค่า config ใน environment หรือยัง
 
 ```bash
-env | grep port
-env | grep dsn
-env | grep redisAddr
+env | grep APP_PORT
+env | grep DATABASE_DSN
+env | grep REDIS_ADDR
 ```
 
 แก้ไข code
@@ -149,7 +179,7 @@ redisAddr := "localhost:6379"
 
 เป็น
 
-```
+```go
 // Load config from environment variables
 port := os.Getenv("APP_PORT")
 if port == "" {
@@ -265,4 +295,89 @@ admin สามารถรันคำสั่ง make ตามด้วย k
 make run
 make restart
 make down
+```
+
+#### ปรับปรุง 6.Process
+
+การแก้ไขจาก code เดิม
+
+```go
+	r.GET("/api/login", func(c *gin.Context) {
+		username := "myusername"
+		c.JSON(http.StatusOK, gin.H{
+			"message": "User logged in",
+			"user":    username,
+		})
+	})
+
+	// ดึง user จาก query parameter (เช่น /api/profile?user=myusername)
+	r.GET("/api/profile", func(c *gin.Context) {
+		user := c.Query("user") // รับค่าผ่าน query string
+		if user == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"user": user})
+	})
+```
+
+เป็น
+
+```go
+import "github.com/gin-contrib/sessions"
+import "github.com/gin-contrib/sessions/cookie"
+
+store := cookie.NewStore([]byte("secret"))
+r.Use(sessions.Sessions("mysession", store))
+
+r.GET("/api/login", func(c *gin.Context) {
+	session := sessions.Default(c)
+	session.Set("user", "myusername")
+	session.Save()
+	c.JSON(http.StatusOK, gin.H{"message": "User logged in"})
+})
+
+r.GET("/api/profile", func(c *gin.Context) {
+	session := sessions.Default(c)
+	user := session.Get("user")
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"user": user})
+})
+
+```
+
+| ประเด็น               | แบบไม่ใช้ session                        | แบบใช้ session                                       |
+| --------------------- | ---------------------------------------- | ---------------------------------------------------- |
+| **ความปลอดภัย**       | ต้องใส่ user ทุก request → เสี่ยงโดนขโมย | Session ถูกเก็บฝั่ง server/HTTP cookie → ปลอดภัยกว่า |
+| **สะดวกในการใช้งาน**  | ต้องแนบ user ทุกครั้ง                    | เก็บไว้ใน session แล้ว reuse ได้ทุก request          |
+| **ขยายระบบได้ง่าย**   | ยากต่อการควบคุม login/logout             | ควบคุมสถานะผู้ใช้ได้ง่ายขึ้น                         |
+| **ป้องกัน spoofing**  | ใครก็เข้าถึง endpoint ได้ถ้ามี username  | ตรวจสอบ session ก่อนเสมอ                             |
+| **มาตรฐานเว็บทั่วไป** | ไม่เหมาะกับการ login/logout แบบจริงจัง   | เหมาะกับระบบที่มี authentication, user session       |
+
+โดยมีประสิทธิภาพดังนี้
+
+- การใช้ session ลด overhead จากการส่งข้อมูลผู้ใช้ซ้ำไปซ้ำมา
+- สามารถเก็บ session บน Redis/memory สำหรับระบบขนาดใหญ่
+- รองรับระบบ login แบบ single-sign-on (SSO) หรือ session expiration ได้ง่าย
+
+ทดสอบการทำงานดังนี้
+
+- เปิด Web browser -> inspection
+
+```
+เข้าไปที่ http://localhost:8080/api/login
+### ouput message
+{"message":"User logged in"}
+```
+
+สามารถดูได้ว่ามี mysession ใน cookies
+![cookies](cookie.png)
+
+```
+- เข้า http://localhost:8080/api/profile
+### output message
+{"user":"myusername"}
 ```
