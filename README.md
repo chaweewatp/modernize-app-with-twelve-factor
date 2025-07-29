@@ -381,3 +381,20 @@ r.GET("/api/profile", func(c *gin.Context) {
 ### output message
 {"user":"myusername"}
 ```
+
+### พักแป๊ปนึง ตอนนี้เราปรับปรุง code ไปถึงไหนแล้วบ้าง
+
+| topic                     | pass |
+| ------------------------- | :--: |
+| 1. Codebase               |  ✅  |
+| 2. Dependencies           |  ✅  |
+| 3. Config                 |  ✅  |
+| 4. Backing services       |  ✅  |
+| 5. Build, Release and Run |  ✅  |
+| 6. Process                |  ✅  |
+| 7. Port binding           |  ✅  |
+| 8. Concurrency            |  ❌  |
+| 9. Disposability          |  ❌  |
+| 10. Dev/prod parity       |  ❌  |
+| 11. Logs                  |  ❌  |
+| 12. Admin process         |  ✅  |
